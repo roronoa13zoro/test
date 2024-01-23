@@ -2,11 +2,12 @@ blinker==1.7.0
 click==8.1.7
 colorama==0.4.6
 Flask==3.0.1
+gunicorn==21.2.0
 itsdangerous==2.1.2
 Jinja2==3.1.3
 MarkupSafe==2.1.4
 nano==0.10.0
+packaging==23.2
 websocket-client==1.7.0
 websocket_server @ git+https://github.com/Pithikos/python-websocket-server@56af8aeed025465e70133f19f96db18113e50a91
 Werkzeug==3.0.1
-Gunicorn
