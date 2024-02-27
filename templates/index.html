@@ -1,0 +1,248 @@
+<html>
+<link rel="stylesheet" type="text/css"
+      href="static/css/style.css" id="mystyle">
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+	    <script src="http://code.jquery.com/jquery-latest.min.js">
+    </script>
+	<script>
+	if (navigator.userAgent.indexOf('Android') > 0) { 
+	let body = document.getElementsByTagName('body')[0]; 
+	body.classList.add('Android'); 
+	} 
+	</script>
+    <script>
+	var wait = function(){
+		window.location.reload(false);
+	};
+		//ラズパイのデータ受信とボタン押下時にラズパイへデータ送信
+		$(function () {
+			var ws = new ReconnectingWebSocket('ws://192.168.50.154:5555/',null,{debug: true, reconnectInterval: 3000});
+			
+			// サーバーからメッセージを受信したときに実行される関数を定義する
+			ws.onmessage = function(event) {
+				// 受信したメッセージを変数に格納する
+				var message = event.data;
+
+				// 文字列を特定の文字（"/"）まで抽出する
+				var result = message.slice(0, message.indexOf(":"));
+
+				// 受信したメッセージの前半部分で分岐　後半部分で表示を切り替え
+				switch (result) {
+					case "gate_state":
+						if( (message.slice(message.indexOf(":") + 1)) == "open" ){
+							$('#gate_btn').text("捕獲扉を閉じる")
+							disableButton()
+						}else if((message.slice(message.indexOf(":") + 1)) == "close" ){
+							$('#gate_btn').text("捕獲扉を開ける")
+							disableButton()
+						}else if((message.slice(message.indexOf(":") + 1)) == "run" ){
+							$('#gate_btn').text("動作中")
+							disableButton()
+						}
+						console.log("gate:" + message);
+						break;
+					case "streaming_state":
+						if( (message.slice(message.indexOf(":") + 1)) == "run" ){
+							$('#streaming_btn').text("カメラ映像を止める")
+							
+							/////// img要素の更新 ///////
+							var camera_elm = document.getElementById("camera_img");
+							
+							// img要素のsrc属性を空文字列にする
+							camera_elm.src = "";
+							
+							// img要素のsrc属性を元の画像のURLに戻す
+							setTimeout(function() {
+								camera_elm.src = "http://192.168.50.154:8080/?action=stream";
+								camera_elm.onload = function(){
+									// img要素のwidthプロパティに画像の横幅を代入する
+									camera_elm.width = camera_elm.naturalWidth;
+									// img要素のheightプロパティに画像の縦幅を代入する
+									camera_elm.height = camera_elm.naturalHeight;
+								}
+							}, 1000);
+							
+						}else if((message.slice(message.indexOf(":") + 1)) == "stop" ){
+							$('#streaming_btn').text("カメラ映像を見る")
+							// img要素の更新
+							var camera_elm = document.getElementById("camera_img");
+							camera_elm.width = 1280;
+							camera_elm.height = 720;
+							
+						}
+						console.log("streaming:" + message);
+						break;
+					
+					//給餌機が定期実行されているかどうか
+					case "feeder_state":
+						//要素を取得する
+						var element = document.getElementById("feeder_btn");
+						// 要素のテキストを書き換える
+						if((message.slice(message.indexOf(":") + 1)) == "stop" ){
+							element.textContent = "給餌機を稼働する";
+						}else if((message.slice(message.indexOf(":") + 1)) == "run" ){
+							element.textContent = "給餌機を停止する";
+						}
+						console.log("feeder_state:" + message);
+						break;
+						
+					//給餌回数の残り
+					case "feeder_remaining":
+						var element = document.getElementById("feeder_remaining");
+						element.textContent = "残りの給餌回数:" + (message.slice(message.indexOf(":") + 1));
+						console.log("feeder_remaining:" + message);
+						break;
+						
+					//機能しているカメラがどれか(実装めんどいので後で！)
+					/*case "camera_isExist":
+						var element = document.getElementById("");
+						if( (message.slice(message.indexOf(":") + 1)) == "open" ){
+							element.textContent = "";
+						}else if((message.slice(message.indexOf(":") + 1)) == "stop" ){
+							element.textContent = "";
+						}else if((message.slice(message.indexOf(":") + 1)) == "run" ){
+							element.textContent = "";
+						}
+						break;
+					*/
+					default:
+						// それ以外の場合の処理
+						console.log("不明な文字列を受信しました。:" + message);
+					}
+			};
+
+			//WebSocketで何らかのエラーが起こったとき
+			ws.onerror=function(event){
+				console.log(event);
+			}
+
+			//WebSocketがタイムアウトや切断された時
+			ws.onclose=function(event){
+				console.log(event);
+				//location.reload();
+			}
+
+			$('#gate_btn').on('click', function () {
+				if($('#gate_btn').text() == "捕獲扉を開ける") {
+					ws.send('gate_open');
+				} else {
+					ws.send('gate_close');
+				}
+			});
+
+			$('#streaming_btn').on('click', function () {
+				if($('#streaming_btn').text() == "カメラ映像を止める") {
+					ws.send('streaming_stop');
+				} else {
+					ws.send('streaming_run');
+				}
+			});
+
+			$('#feeder_btn').on('click', function () {
+				if($('#feeder_btn').text() == "給餌機を停止する") {
+					ws.send('feeder_state_stop');
+				} else {
+					ws.send('feeder_state_run');
+				}
+			});
+
+			//一回だけ給餌
+			$('#feeder_once_btn').on('click',function(){
+				ws.send('feed_once');
+			});
+
+			//カメラ切り替え
+			$('#change_camera_btn').on('click', function () {
+				let elements = document.getElementsByName('camera');
+				let len = elements.length;
+				let checkValue = '';
+
+				for (let i = 0; i < len; i++){
+					if (elements.item(i).checked){
+						checkValue = elements.item(i).value;
+					}
+				}
+				ws.send(checkValue);
+			});
+
+			//再起動
+			$('#reboot_btn').on('click', function () {
+				ws.send('reboot');
+			});
+		})
+
+		//時間表示
+		function set2fig(num) {
+		// 桁数が1桁だったら先頭に0を加えて2桁に調整する
+		var ret;
+			if( num < 10 ) { ret = "0" + num; }
+				else { ret = num; }
+				return ret;
+			}
+		function showClock2() {
+			var nowTime = new Date();
+			var nowHour = set2fig( nowTime.getHours() );
+			var nowMin  = set2fig( nowTime.getMinutes() );
+			var nowSec  = set2fig( nowTime.getSeconds() );
+			var msg = "現在時刻は、" + nowHour + ":" + nowMin + ":" + nowSec + " です。";
+			document.getElementById("RealtimeClockArea2").innerHTML = msg;
+		}
+		setInterval('showClock2()',1000);
+
+		//ボタン操作停止
+		function disableButton() {
+			document.getElementById("gate_btn").disabled = true;
+			setTimeout(function() {document.getElementById("gate_btn").disabled = false;}, 2000); // 5秒後にボタンを再度有効化
+		}
+
+		function changesytle(cssid,cssfile) {
+			document.getElementById(cssid).href = cssfile;
+		}
+
+	</script>
+    <body>
+		<div style="text-align: center">
+			<p><img src="http://192.168.50.154:8080/?action=stream" id="camera_img" width=auto height=auto alt="カメラ映像が受信できません。「カメラ映像を見る」ボタンを押しても改善されない場合は、ブラウザをリロードするかIoT管理式中型囲い罠のシステムを再起動してください" /></p>
+			<p id="RealtimeClockArea2" class="clock">少々お待ちください</p>
+            <div class="tab-wrap">
+				<input id="tab01" type="radio" name="tab" class="tab-switch1" checked="checked"><label class="tab-label" for="tab01">捕獲扉</label>
+				<div class="tab-content">
+					<button id="gate_btn" class="button_door">捕獲扉を閉じる</button>
+					<button id="streaming_btn" class="button_camera">カメラ映像を止める</button>
+					<fieldset>
+						<legend>見たいカメラを選択し、ボタンを押してください</legend>
+						<div class="select">
+							<input type="radio" id="camera_a" name="camera" value="camera_a" checked />
+							<label for="camera_a">カメラA</label>
+							<input type="radio" id="camera_b" name="camera" value="camera_b" />
+							<label for="camera_b">カメラB</label>
+							<input type="radio" id="camera_c" name="camera" value="camera_c" />
+							<label for="camera_c">カメラC</label>
+							<input type="radio" id="camera_d" name="camera" value="camera_d" />
+							<label for="camera_d">カメラD</label>
+						</div>
+						
+						<button id="change_camera_btn" class="button_camera_change">カメラを切り替える</button>
+						
+					</fieldset>
+				</div>
+				<input id="tab02" type="radio" name="tab" class="tab-switch2"><label class="tab-label" for="tab02">給餌機</label>
+				<div class="tab-content">
+					<p id="feeder_remaining" style="border: 3px solid">残りの給餌回数:4</p>
+					<button id="feeder_btn" class="button_feeding_stop">給餌機を停止する</button>
+					<button id="feeder_once_btn" class="button_feeding_now">手動で給餌する</button>
+				</div>
+			    <!-- <input id="tab03" type="radio" name="tab" class="tab-switch3"><label class="tab-label" for="tab03">設定</label>
+				<div class="tab-content">
+					<input id="reboot_btn" type="image" src="/static/img/button_reboot_Color_2.png" name="button_reboot" alt="再起動" class="button_reboot">
+				</div> -->
+			</div>
+		</div>
+		<!-- ここがBootstrapのCDN -->
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+		<!-- ここがBootstrapのCDN -->
+		<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/js/bootstrap.min.js"></script>
+	</body>
+</head>
+</html>
